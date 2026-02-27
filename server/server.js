@@ -6,7 +6,7 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const nodemailer = require('nodemailer');
+const https = require('https');
 
 const SECRET = process.env.FR_SECRET || 'dev_secret_change_me';
 
@@ -113,24 +113,49 @@ function authEmailFromReq(req) {
 }
 
 // ============================================================
-// BREVO SMTP CONFIGURATION
-// Set these environment variables on Render:
-//   SMTP_HOST = smtp-relay.brevo.com
-//   SMTP_PORT = 587
-//   SMTP_USER = your brevo login
-//   SMTP_PASS = your brevo password
-//   SMTP_FROM = your sender email
+// BREVO HTTP API — works on Render free plan (uses HTTPS port 443)
+// Set BREVO_API_KEY in Render environment variables
 // ============================================================
-const mailer = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp-relay.brevo.com',
-  port: Number(process.env.SMTP_PORT) || 587,
-  secure: false,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-});
-console.log('[MAIL] Brevo SMTP configured');
+const BREVO_API_KEY = process.env.BREVO_API_KEY || '';
+
+function sendBrevoEmail(to, subject, htmlContent, textContent) {
+  return new Promise((resolve, reject) => {
+    const payload = JSON.stringify({
+      sender: { name: 'FarmRent', email: 'harunsanayapalli@gmail.com' },
+      to: [{ email: to }],
+      subject,
+      htmlContent,
+      textContent,
+    });
+
+    const options = {
+      hostname: 'api.brevo.com',
+      path: '/v3/smtp/email',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'api-key': BREVO_API_KEY,
+        'Content-Length': Buffer.byteLength(payload),
+      },
+    };
+
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          resolve(data);
+        } else {
+          reject(new Error(`Brevo API error ${res.statusCode}: ${data}`));
+        }
+      });
+    });
+
+    req.on('error', reject);
+    req.write(payload);
+    req.end();
+  });
+}
 
 const twilio = require('twilio');
 let smsClient = null;
@@ -143,11 +168,10 @@ function genOtp() { return Math.floor(100000 + Math.random() * 900000).toString(
 async function sendOtpDelivery(email, code, phone) {
   if (email) {
     try {
-      await mailer.sendMail({
-        from: `"FarmRent" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
-        to: email,
-        subject: 'Your FarmRent OTP Code',
-        html: `
+      await sendBrevoEmail(
+        email,
+        'Your FarmRent OTP Code',
+        `
           <div style="font-family:Arial,sans-serif;max-width:400px;margin:auto;padding:24px;border:1px solid #e0e0e0;border-radius:8px;">
             <h2 style="color:#2e7d32;">🌾 FarmRent OTP</h2>
             <p>Your one-time password is:</p>
@@ -155,8 +179,8 @@ async function sendOtpDelivery(email, code, phone) {
             <p style="color:#666;">This code expires in <strong>5 minutes</strong>. Do not share it with anyone.</p>
           </div>
         `,
-        text: `Your FarmRent OTP code is ${code}. It expires in 5 minutes.`,
-      });
+        `Your FarmRent OTP code is ${code}. It expires in 5 minutes.`
+      );
       console.log('[MAIL] OTP email sent to', email);
     } catch (e) {
       console.error('[MAIL] Failed to send OTP email:', e.message);
