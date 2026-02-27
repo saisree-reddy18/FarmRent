@@ -12,7 +12,7 @@ async function sendEmail(to, subject, htmlContent) {
   const res = await fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
     headers: { 'accept': 'application/json', 'api-key': BREVO_API_KEY, 'content-type': 'application/json' },
-    body: JSON.stringify({ sender: { name: 'FarmRent', email: 'hariharanreddy843@gmail.com' }, to: [{ email: to }], subject, htmlContent })
+    body: JSON.stringify({ sender: { name: 'FarmRent', email: 'harunsanayapalli@gmail.com' }, to: [{ email: to }], subject, htmlContent })
   });
   if (!res.ok) { const err = await res.text(); throw new Error(`Brevo error: ${err}`); }
   return await res.json();
