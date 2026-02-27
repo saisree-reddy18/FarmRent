@@ -7,6 +7,15 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
+// ============================================================
+// RESEND EMAIL CONFIGURATION
+// 1. Sign up at https://resend.com (free — 100 emails/day)
+// 2. Get your API key from the dashboard
+// 3. Add to your .env file:  RESEND_API_KEY=re_xxxxxxxxxxxxxxxx
+// ============================================================
+const { Resend } = require('resend');
+const resend = new Resend(process.env.RESEND_API_KEY);
+
 const SECRET = process.env.FR_SECRET || 'dev_secret_change_me';
 
 const DB_FILE = path.join(__dirname, 'db.json');
@@ -61,13 +70,11 @@ app.delete('/api/equip/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-// Users & Auth (very simple token sessions for demo)
+// Users & Auth
 app.post('/api/signup', (req, res) => {
   const db = readDb();
   const u = req.body;
-  // require otp along with signup
   if (!u || !u.email || !u.pass || !u.name || !u.otp) return res.status(400).json({ error: 'Invalid payload' });
-  // verify OTP
   const otps = db.otps || {};
   const rec = otps[u.email.toLowerCase()];
   if (!rec || rec.code !== u.otp.toString() || Date.now() > rec.expiresAt) {
@@ -75,16 +82,13 @@ app.post('/api/signup', (req, res) => {
   }
   if (!db.users) db.users = [];
   if (db.users.find(x => x.email === u.email)) return res.status(409).json({ error: 'Email exists' });
-  // hash password
   const hashed = bcrypt.hashSync(u.pass, 10);
   const user = { name: u.name, email: u.email, pass: hashed, role: u.role || 'tenant', contact: u.contact || '' };
   db.users.push(user);
-  // consume OTP
   delete db.otps[u.email.toLowerCase()];
-  // create JWT
   const token = jwt.sign({ email: user.email, name: user.name, role: user.role }, SECRET, { expiresIn: '7d' });
   if (!db.sessions) db.sessions = {};
-  db.sessions[token] = user.email; // backward compatibility
+  db.sessions[token] = user.email;
   writeDb(db);
   res.json({ token, user: { name: user.name, email: user.email, role: user.role, contact: user.contact } });
 });
@@ -99,7 +103,7 @@ app.post('/api/login', (req, res) => {
   if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
   const token = jwt.sign({ email: user.email, name: user.name, role: user.role }, SECRET, { expiresIn: '7d' });
   if (!db.sessions) db.sessions = {};
-  db.sessions[token] = user.email; // backward compatibility
+  db.sessions[token] = user.email;
   writeDb(db);
   res.json({ token, user: { name: user.name, email: user.email, role: user.role, contact: user.contact } });
 });
@@ -107,61 +111,19 @@ app.post('/api/login', (req, res) => {
 function authEmailFromReq(req) {
   const auth = req.headers['authorization'] || req.headers['x-fr-token'];
   if (!auth) return null;
-  // Bearer token
   let token = auth;
   if (auth.startsWith('Bearer ')) token = auth.slice(7).trim();
   try {
     const payload = jwt.verify(token, SECRET);
     return payload && payload.email ? payload.email : null;
   } catch (e) {
-    // fallback to legacy sessions map
     const db = readDb();
     return (db.sessions && db.sessions[token]) || null;
   }
 }
 
-// OTP endpoints (demo)
-const nodemailer = require('nodemailer');
+// OTP
 const twilio = require('twilio');
-
-// ============================================================
-// EMAIL CONFIGURATION — Fill in your Gmail credentials below
-// OR set these environment variables:
-//   GMAIL_USER  — your Gmail address  e.g. yourname@gmail.com
-//   GMAIL_PASS  — your Gmail App Password (16 chars, no spaces)
-//
-// HOW TO GET A GMAIL APP PASSWORD:
-//   1. Go to myaccount.google.com → Security
-//   2. Enable 2-Step Verification
-//   3. Go to Security → App passwords
-//   4. Create a new app password → copy the 16-character code
-// ============================================================
-const GMAIL_USER = process.env.GMAIL_USER || '';  // e.g. 'yourname@gmail.com'
-const GMAIL_PASS = process.env.GMAIL_PASS || '';  // e.g. 'abcd efgh ijkl mnop'
-
-let mailer = null;
-if (GMAIL_USER && GMAIL_PASS) {
-  mailer = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-      user: GMAIL_USER,
-      pass: GMAIL_PASS.replace(/\s/g, ''), // strip spaces if copied with spaces
-    },
-  });
-  console.log('[MAIL] Gmail configured for:', GMAIL_USER);
-} else if (process.env.SMTP_HOST) {
-  // fallback: custom SMTP via env vars
-  mailer = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT) || 587,
-    secure: process.env.SMTP_SECURE === 'true',
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-  });
-  console.log('[MAIL] Custom SMTP configured for:', process.env.SMTP_HOST);
-} else {
-  console.warn('[MAIL] WARNING: No email credentials configured! Set GMAIL_USER and GMAIL_PASS to send OTP emails.');
-  console.warn('[MAIL] For development, start server with FR_DEV_OTP=1 to auto-fill OTP in browser.');
-}
 
 let smsClient = null;
 if (process.env.TWILIO_SID && process.env.TWILIO_TOKEN) {
@@ -171,57 +133,55 @@ if (process.env.TWILIO_SID && process.env.TWILIO_TOKEN) {
 function genOtp() { return Math.floor(100000 + Math.random() * 900000).toString(); }
 
 async function sendOtpDelivery(email, code, phone) {
-   // email first
-   if (mailer && email) {
-     try {
-       await mailer.sendMail({
-         from: `"FarmRent" <${GMAIL_USER || process.env.SMTP_FROM || process.env.SMTP_USER}>`,
-         to: email,
-         subject: 'Your FarmRent OTP Code',
-         html: `
-           <div style="font-family:Arial,sans-serif;max-width:400px;margin:auto;padding:24px;border:1px solid #e0e0e0;border-radius:8px;">
-             <h2 style="color:#2e7d32;">🌾 FarmRent OTP</h2>
-             <p>Your one-time password is:</p>
-             <div style="font-size:36px;font-weight:bold;letter-spacing:8px;color:#2e7d32;padding:16px 0;">${code}</div>
-             <p style="color:#666;">This code expires in <strong>5 minutes</strong>. Do not share it with anyone.</p>
-           </div>
-         `,
-         text: `Your FarmRent OTP code is ${code}. It expires in 5 minutes.`,
-       });
-       console.log('[MAIL] OTP email sent to', email);
-     } catch (e) {
-       console.error('[MAIL] Failed to send OTP email:', e.message);
-     }
-   } else if (!mailer) {
-     console.warn('[MAIL] OTP not sent — no mailer configured. OTP code:', code);
-   }
-   if (smsClient && phone) {
-     try {
-       await smsClient.messages.create({
-         body: `FarmRent OTP: ${code}`,
-         from: process.env.TWILIO_FROM,
-         to: phone,
-       });
-     } catch (e) {
-       console.error('Failed to send OTP SMS', e);
-     }
-   }
- }
+  // Send email via Resend
+  if (email) {
+    try {
+      await resend.emails.send({
+        from: 'FarmRent <onboarding@resend.dev>',
+        to: email,
+        subject: 'Your FarmRent OTP Code',
+        html: `
+          <div style="font-family:Arial,sans-serif;max-width:400px;margin:auto;padding:24px;border:1px solid #e0e0e0;border-radius:8px;">
+            <h2 style="color:#2e7d32;">🌾 FarmRent OTP</h2>
+            <p>Your one-time password is:</p>
+            <div style="font-size:36px;font-weight:bold;letter-spacing:8px;color:#2e7d32;padding:16px 0;">${code}</div>
+            <p style="color:#666;">This code expires in <strong>5 minutes</strong>. Do not share it with anyone.</p>
+          </div>
+        `,
+        text: `Your FarmRent OTP code is ${code}. It expires in 5 minutes.`,
+      });
+      console.log('[MAIL] OTP email sent to', email);
+    } catch (e) {
+      console.error('[MAIL] Failed to send OTP email:', e.message);
+    }
+  }
 
- app.post('/api/request-otp', async (req, res) => {
-   console.log('[API] request-otp', req.body);
-   const { email } = req.body || {};
-   if (!email) return res.status(400).json({ error: 'Email required' });
-   const db = readDb();
-   if (!db.otps) db.otps = {};
-   const code = genOtp();
-   const expiresAt = Date.now() + (5 * 60 * 1000); // 5 minutes
-   db.otps[email.toLowerCase()] = { code, expiresAt };
-   writeDb(db);
-   // deliver via configured channels
-   const user = (db.users || []).find(u => u.email === email.toLowerCase());
-   const phone = user && user.contact && user.contact.match(/\+?\d+/) ? user.contact : null;
-   await sendOtpDelivery(email, code, phone);
+  if (smsClient && phone) {
+    try {
+      await smsClient.messages.create({
+        body: `FarmRent OTP: ${code}`,
+        from: process.env.TWILIO_FROM,
+        to: phone,
+      });
+    } catch (e) {
+      console.error('Failed to send OTP SMS', e);
+    }
+  }
+}
+
+app.post('/api/request-otp', async (req, res) => {
+  console.log('[API] request-otp', req.body);
+  const { email } = req.body || {};
+  if (!email) return res.status(400).json({ error: 'Email required' });
+  const db = readDb();
+  if (!db.otps) db.otps = {};
+  const code = genOtp();
+  const expiresAt = Date.now() + (5 * 60 * 1000);
+  db.otps[email.toLowerCase()] = { code, expiresAt };
+  writeDb(db);
+  const user = (db.users || []).find(u => u.email === email.toLowerCase());
+  const phone = user && user.contact && user.contact.match(/\+?\d+/) ? user.contact : null;
+  await sendOtpDelivery(email, code, phone);
   if (process.env.FR_DEV_OTP === '1') return res.json({ ok: true, code });
   return res.json({ ok: true });
 });
@@ -234,25 +194,20 @@ app.post('/api/verify-otp', (req, res) => {
   if (!rec) return res.status(400).json({ error: 'No OTP requested' });
   if (Date.now() > rec.expiresAt) { delete db.otps[email.toLowerCase()]; writeDb(db); return res.status(400).json({ error: 'OTP expired' }); }
   if (rec.code !== code.toString()) return res.status(400).json({ error: 'Invalid code' });
-  // valid — issue or find user
   if (!db.users) db.users = [];
   let user = db.users.find(u => u.email === email.toLowerCase());
   if (!user) {
-    // auto-provision a tenant user for demo
     user = { name: email.split('@')[0], email: email.toLowerCase(), pass: '', role: 'tenant', contact: '' };
     db.users.push(user);
   }
-  // issue JWT
   const token = jwt.sign({ email: user.email, name: user.name, role: user.role }, SECRET, { expiresIn: '7d' });
   if (!db.sessions) db.sessions = {};
   db.sessions[token] = user.email;
-  // consume OTP
   delete db.otps[email.toLowerCase()];
   writeDb(db);
   res.json({ token, user: { name: user.name, email: user.email, role: user.role, contact: user.contact } });
 });
 
-// verify-otp-only: check OTP validity but do not create user or issue token
 app.post('/api/verify-otp-only', (req, res) => {
   const { email, code } = req.body || {};
   if (!email || !code) return res.status(400).json({ error: 'Email and code required' });
@@ -261,7 +216,6 @@ app.post('/api/verify-otp-only', (req, res) => {
   if (!rec) return res.status(400).json({ error: 'No OTP requested' });
   if (Date.now() > rec.expiresAt) { delete db.otps[email.toLowerCase()]; writeDb(db); return res.status(400).json({ error: 'OTP expired' }); }
   if (rec.code !== code.toString()) return res.status(400).json({ error: 'Invalid code' });
-  // valid, don't consume here (signup will consume)
   res.json({ ok: true });
 });
 
@@ -279,7 +233,6 @@ app.post('/api/chats/:thread', (req, res) => {
   if (!db.chats) db.chats = {};
   const msg = req.body;
   if (!msg || !msg.text) return res.status(400).json({ error: 'Invalid payload' });
-  // identify sender if token provided
   const senderEmail = authEmailFromReq(req) || msg.from;
   const senderName = msg.fromName || senderEmail || 'anonymous';
   const time = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
@@ -316,10 +269,9 @@ app.put('/api/bookings/:id', (req, res) => {
   res.json(db.bookings[idx]);
 });
 
-// Simple health
+// Health
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
-// Ensure db file exists
 ensureDb();
 
 const PORT = process.env.PORT || 4000;
