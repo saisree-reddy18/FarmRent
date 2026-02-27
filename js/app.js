@@ -1411,10 +1411,11 @@ async function pollServer() {
       }
     }));
 
-    if (changed) {
+   if (changed) {
       persist();
       // update UI
       renderProducts(); renderChips(); renderBookings(); renderRequests(); renderMessages();
+      renderChatMsgs();
     }
   } catch (e) {
     // silent fail (offline)
