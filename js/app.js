@@ -1379,12 +1379,13 @@ async function getThreadKeysForSession() {
   const keys = new Set(Object.keys(chats));
   if (session.role === 'tenant') {
     db.bookings.filter(b => b.user === session.email).forEach(b => keys.add(chatThreadKey(b.equipmentId, session.email)));
-  } else if (session.role === 'owner') {
-    db.equip.filter(e => e.owner === session.name).forEach(eq => {
+} else if (session.role === 'owner') {
+    db.equip.filter(e => e.owner === session.name || e.ownerEmail === session.email).forEach(eq => {
       db.bookings.filter(b => b.equipmentId === eq.id).forEach(b => keys.add(chatThreadKey(eq.id, b.user)));
     });
+    // Also include any threads already in chats object
   }
-  return [...keys];
+return [...keys];
 }
 
 async function pollServer() {
