@@ -1,4 +1,4 @@
-require('dotenv').config(); // load .env file automatically
+require('dotenv').config();
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
@@ -6,15 +6,7 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-
-// ============================================================
-// RESEND EMAIL CONFIGURATION
-// 1. Sign up at https://resend.com (free — 100 emails/day)
-// 2. Get your API key from the dashboard
-// 3. Add to your .env file:  RESEND_API_KEY=re_xxxxxxxxxxxxxxxx
-// ============================================================
-const { Resend } = require('resend');
-const resend = new Resend(process.env.RESEND_API_KEY);
+const nodemailer = require('nodemailer');
 
 const SECRET = process.env.FR_SECRET || 'dev_secret_change_me';
 
@@ -28,7 +20,6 @@ const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
-// Helpers
 function ensureDb() {
   const db = readDb();
   if (!db.equip) db.equip = [];
@@ -70,7 +61,6 @@ app.delete('/api/equip/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-// Users & Auth
 app.post('/api/signup', (req, res) => {
   const db = readDb();
   const u = req.body;
@@ -122,9 +112,27 @@ function authEmailFromReq(req) {
   }
 }
 
-// OTP
-const twilio = require('twilio');
+// ============================================================
+// BREVO SMTP CONFIGURATION
+// Set these environment variables on Render:
+//   SMTP_HOST = smtp-relay.brevo.com
+//   SMTP_PORT = 587
+//   SMTP_USER = your brevo login
+//   SMTP_PASS = your brevo password
+//   SMTP_FROM = your sender email
+// ============================================================
+const mailer = nodemailer.createTransport({
+  host: process.env.SMTP_HOST || 'smtp-relay.brevo.com',
+  port: Number(process.env.SMTP_PORT) || 587,
+  secure: false,
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
+});
+console.log('[MAIL] Brevo SMTP configured');
 
+const twilio = require('twilio');
 let smsClient = null;
 if (process.env.TWILIO_SID && process.env.TWILIO_TOKEN) {
   smsClient = twilio(process.env.TWILIO_SID, process.env.TWILIO_TOKEN);
@@ -133,11 +141,10 @@ if (process.env.TWILIO_SID && process.env.TWILIO_TOKEN) {
 function genOtp() { return Math.floor(100000 + Math.random() * 900000).toString(); }
 
 async function sendOtpDelivery(email, code, phone) {
-  // Send email via Resend
   if (email) {
     try {
-      await resend.emails.send({
-        from: 'FarmRent <onboarding@resend.dev>',
+      await mailer.sendMail({
+        from: `"FarmRent" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
         to: email,
         subject: 'Your FarmRent OTP Code',
         html: `
@@ -155,7 +162,6 @@ async function sendOtpDelivery(email, code, phone) {
       console.error('[MAIL] Failed to send OTP email:', e.message);
     }
   }
-
   if (smsClient && phone) {
     try {
       await smsClient.messages.create({
@@ -219,7 +225,6 @@ app.post('/api/verify-otp-only', (req, res) => {
   res.json({ ok: true });
 });
 
-// Chats
 app.get('/api/chats/:thread', (req, res) => {
   const key = req.params.thread;
   const db = readDb();
@@ -243,7 +248,6 @@ app.post('/api/chats/:thread', (req, res) => {
   res.json(payload);
 });
 
-// Bookings
 app.get('/api/bookings', (req, res) => {
   const db = readDb();
   res.json(db.bookings || []);
@@ -269,7 +273,6 @@ app.put('/api/bookings/:id', (req, res) => {
   res.json(db.bookings[idx]);
 });
 
-// Health
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
 ensureDb();
