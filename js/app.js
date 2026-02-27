@@ -752,8 +752,7 @@ function renderOwnerList() {
     c.innerHTML = `<div class="empty"><div class="empty-icon">🚜</div><h3>Owner access required</h3></div>`;
     return;
   }
-  const mine = db.equip.filter(e => e.owner === session.name);
-  if (!mine.length) {
+const mine = db.equip.filter(e => e.owner === session.name || e.ownerEmail === session.email);  if (!mine.length) {
     c.innerHTML = `<div class="empty">
       <div class="empty-icon">📋</div>
       <h3>No listings yet</h3>
@@ -896,7 +895,7 @@ function saveEquipment() {
     } else {
       const newItem = {
         id: uid(), name, cost, crops, category: cat, desc,
-        owner: session.name, ownerContact: contact,
+        owner: session.name, ownerEmail: session.email, ownerContact: contact,
         image: imageData || '', icon: pickedIcon, available,
       };
       (async () => {
@@ -939,8 +938,7 @@ function renderRequests() {
     c.innerHTML = `<div class="empty"><div class="empty-icon">📩</div><h3>Owner access required</h3></div>`;
     return;
   }
-  const myIds = db.equip.filter(e => e.owner === session.name).map(e => e.id);
-  const reqs  = db.bookings.filter(b => myIds.includes(b.equipmentId));
+const myIds = db.equip.filter(e => e.owner === session.name || e.ownerEmail === session.email).map(e => e.id);  const reqs  = db.bookings.filter(b => myIds.includes(b.equipmentId));
   if (!reqs.length) {
     c.innerHTML = `<div class="empty"><div class="empty-icon">📩</div><h3>No booking requests yet</h3></div>`;
     return;
@@ -1380,10 +1378,9 @@ async function getThreadKeysForSession() {
   if (session.role === 'tenant') {
     db.bookings.filter(b => b.user === session.email).forEach(b => keys.add(chatThreadKey(b.equipmentId, session.email)));
 } else if (session.role === 'owner') {
-    db.equip.filter(e => e.owner === session.name || e.ownerEmail === session.email).forEach(eq => {
+db.equip.filter(e => e.owner === session.name || e.ownerEmail === session.email).forEach(eq => {
       db.bookings.filter(b => b.equipmentId === eq.id).forEach(b => keys.add(chatThreadKey(eq.id, b.user)));
-    });
-    // Also include any threads already in chats object
+    });    // Also include any threads already in chats object
   }
 return [...keys];
 }
@@ -1416,8 +1413,8 @@ async function pollServer() {
       persist();
       // update UI
       renderProducts(); renderChips(); renderBookings(); renderRequests(); renderMessages();
-      renderChatMsgs();
-    }
+      } renderChatMsgs();
+    
   } catch (e) {
     // silent fail (offline)
   }
