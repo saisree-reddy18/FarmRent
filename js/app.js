@@ -991,8 +991,7 @@ function getUnreadCountForThread(threadKey) {
   const tenantEmail = parts[1];
   const eq = db.equip.find(e => e.id === equipId);
   const isTenant = session.email === tenantEmail;
-  const isOwner = eq && session.name === eq.owner;
-  if (!isTenant && !isOwner) return 0;
+const isOwner = eq && (session.name === eq.owner || session.email === eq.ownerEmail);  if (!isTenant && !isOwner) return 0;
 
   // Get the last read message index for this user
   const readStatus = messageReadStatus[threadKey] || {};
@@ -1054,8 +1053,7 @@ function renderMessages() {
     if (!eq) return;
 
     // Determine if user is in this thread
-    const isOwner = session.name === eq.owner;
-    const isTenant = session.email === tenantEmail;
+const isOwner = session.name === eq.owner || session.email === eq.ownerEmail;    const isTenant = session.email === tenantEmail;
     if (!isOwner && !isTenant) return;
 
     const msgs = chats[k] || [];
@@ -1200,8 +1198,7 @@ function openChatFor(equipId, tenantEmail) {
 
   // build or open appropriate thread
   let threadKey;
-  if (session.name === eq.owner) {
-    // owner: choose tenant from booking list or passed param
+if (session.name === eq.owner || session.email === eq.ownerEmail) {    // owner: choose tenant from booking list or passed param
     const tenant = tenantEmail || chooseTenantForOwner(equipId);
     if (!tenant) { goTo('messages'); return; }
     threadKey = chatThreadKey(equipId, tenant);
@@ -1220,7 +1217,7 @@ function openChatFor(equipId, tenantEmail) {
       equipId,
       tenantEmail: threadKey.split('::')[1],
       equipName: eq.name,
-      otherUserName: session.name === eq.owner ? getUserNameByEmail(threadKey.split('::')[1]) : eq.owner
+    otherUserName: (session.name === eq.owner || session.email === eq.ownerEmail) ? getUserNameByEmail(threadKey.split('::')[1]) : eq.owner
     };
     openChatThread(threadKey, info);
   }, 100);
@@ -1263,8 +1260,7 @@ function sendChat() {
   if (!eq) { showToast('Equipment not found'); return; }
   
   // Only allow the thread initiator (tenantEmail) or the equipment owner to send messages
-  const isOwner = session.name === eq.owner;
-  const isTenant = session.email === tenantEmail;
+const isOwner = session.name === eq.owner || session.email === eq.ownerEmail;  const isTenant = session.email === tenantEmail;
   
   if (!isOwner && !isTenant) {
     showToast('You do not have permission to message in this thread');
