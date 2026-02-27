@@ -38,13 +38,21 @@
       "pass": "$2a$10$aX9Rm4BN7XVgn07sQnyIKurA2aQGs4pxgbJLX/wmIm3VhvfcrT66a",
       "role": "owner",
       "contact": ""
+    },
+    {
+      "name": "Priya",
+      "email": "y.sivapriya2005@gmail.com",
+      "pass": "$2a$10$caEr/dV/nPE2bRwIpgh3IugYOY5U/B/AeE/YahB/tM1uDyJ4FqQb2",
+      "role": "owner",
+      "contact": ""
     }
   ],
   "chats": {},
   "sessions": {
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImhhcnVuc2FuYXlhcGFsbGlAZ21haWwuY29tIiwibmFtZSI6IlMuIFNhaSBTcmVlIFJlZGR5Iiwicm9sZSI6InRlbmFudCIsImlhdCI6MTc3MjEyMzQ3OCwiZXhwIjoxNzcyNzI4Mjc4fQ.90I-fIikuN5yYtpKQlBQWsNiwKmQOZZxsfU1fVtM7T8": "harunsanayapalli@gmail.com",
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6Imt1cnJhZ2lyaXNobWFAZ21haWwuY29tIiwibmFtZSI6IksuR2lyaXNobWEiLCJyb2xlIjoib3duZXIiLCJpYXQiOjE3NzIxMjM1NTMsImV4cCI6MTc3MjcyODM1M30.xMr0NUnrZ--xG4z3kv5tzu6Qn-b7VHaLmdMS9mWpUrg": "kurragirishma@gmail.com",
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImhhcmloYXJhbnJlZGR5ODQzQGdtYWlsLmNvbSIsIm5hbWUiOiJIYXJpSGFyYW4iLCJyb2xlIjoib3duZXIiLCJpYXQiOjE3NzIxMjYwODIsImV4cCI6MTc3MjczMDg4Mn0.FmgK9Bdd08yDwUVdw3S2_qWtkRxmz0Fcuqy_Q0iGMBg": "hariharanreddy843@gmail.com"
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImhhcmloYXJhbnJlZGR5ODQzQGdtYWlsLmNvbSIsIm5hbWUiOiJIYXJpSGFyYW4iLCJyb2xlIjoib3duZXIiLCJpYXQiOjE3NzIxMjYwODIsImV4cCI6MTc3MjczMDg4Mn0.FmgK9Bdd08yDwUVdw3S2_qWtkRxmz0Fcuqy_Q0iGMBg": "hariharanreddy843@gmail.com",
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6Inkuc2l2YXByaXlhMjAwNUBnbWFpbC5jb20iLCJuYW1lIjoiUHJpeWEiLCJyb2xlIjoib3duZXIiLCJpYXQiOjE3NzIxNjE4MDEsImV4cCI6MTc3Mjc2NjYwMX0.biPSC758MT1Xjcsrhs3LzqALqylFyoEBoxF9LaxW81c": "y.sivapriya2005@gmail.com"
   },
   "otps": {
     "you@example.com": {
