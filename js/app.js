@@ -518,6 +518,27 @@ function renderChips(q = '') {
     });
 }
 
+
+/* ----------------------------------------------------------
+   TENANT PRICE VERDICT (shown on browse cards)
+   ---------------------------------------------------------- */
+function getTenantPriceVerdict(eq) {
+  const base = PRICE_DATA[eq.category] || PRICE_DATA['Other'];
+  if (!base) return null;
+  const month = new Date().getMonth();
+  const season = SEASON_MULTIPLIERS[month] || { mult: 1.0 };
+  const totalMult = season.mult;
+  const min  = Math.round(base.min * totalMult / 50) * 50;
+  const suggested = Math.round(base.suggested * totalMult / 50) * 50;
+  const max  = Math.round(base.max * totalMult / 50) * 50;
+  const cost = eq.cost;
+
+  if (cost <= min) return { label: '🟢 Great Deal', cls: 'verdict-tenant-great', tip: `Market rate is ₹${suggested}/day` };
+  if (cost <= suggested) return { label: '✅ Fair Price', cls: 'verdict-tenant-fair', tip: `Suggested: ₹${suggested}/day` };
+  if (cost <= max) return { label: '🟡 Above Average', cls: 'verdict-tenant-above', tip: `Market rate is ₹${suggested}/day` };
+  return { label: '🔴 Expensive', cls: 'verdict-tenant-high', tip: `Market rate is ₹${suggested}/day` };
+}
+
 function renderProducts(filter) {
   const q = (filter !== undefined ? filter : ($('searchInp')?.value || '')).toLowerCase();
   const grid = $('productsGrid'); if (!grid) return; grid.innerHTML = '';
@@ -560,6 +581,7 @@ function renderProducts(filter) {
             ${avg ? avg.toFixed(1) + ` (${ratingCount})` : 'No ratings yet'}
           </span>
         </div>
+        ${(() => { const v = getTenantPriceVerdict(eq); return v ? `<div class="tenant-price-verdict ${v.cls}" title="${v.tip}">${v.label} <span class="verdict-tip">${v.tip}</span></div>` : ''; })()}
         <div class="equip-actions">
           <button class="btn-book" ${eq.available ? '' : 'disabled'} onclick="openRental('${eq.id}')">
             ${eq.available ? 'Book Now' : 'Unavailable'}

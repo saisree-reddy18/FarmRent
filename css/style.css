@@ -997,3 +997,30 @@ footer p  { font-size: 14px; opacity: .75; line-height: 1.6; }
   letter-spacing: 0.3px;
 }
 .predict-apply-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(46,125,50,0.3); }
+
+/* ============================================================
+   TENANT PRICE VERDICT BADGE (on browse cards)
+   ============================================================ */
+.tenant-price-verdict {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 20px;
+  margin: 6px 0 2px 0;
+  cursor: default;
+  width: fit-content;
+  letter-spacing: 0.2px;
+}
+.verdict-tenant-great { background: #e8f5e9; color: #1b5e20; border: 1px solid #a5d6a7; }
+.verdict-tenant-fair  { background: #e3f2fd; color: #0d47a1; border: 1px solid #90caf9; }
+.verdict-tenant-above { background: #fff8e1; color: #e65100; border: 1px solid #ffe082; }
+.verdict-tenant-high  { background: #fce4ec; color: #b71c1c; border: 1px solid #f48fb1; }
+
+.verdict-tip {
+  font-size: 10px;
+  font-weight: 400;
+  opacity: 0.8;
+}
