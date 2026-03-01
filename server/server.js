@@ -1,138 +1,246 @@
 require('dotenv').config();
-const express = require('express');
-const path = require('path');
-const cors = require('cors');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const { MongoClient, ServerApiVersion } = require('mongodb');
-
-const BREVO_API_KEY = process.env.BREVO_API_KEY;
-async function sendEmail(to, subject, htmlContent) {
-  const fetch = (await import('node-fetch')).default;
-  const res = await fetch('https://api.brevo.com/v3/smtp/email', {
-    method: 'POST',
-    headers: { 'accept': 'application/json', 'api-key': BREVO_API_KEY, 'content-type': 'application/json' },
-    body: JSON.stringify({ sender: { name: 'FarmRent', email: 'harunsanayapalli@gmail.com' }, to: [{ email: to }], subject, htmlContent })
-  });
-  if (!res.ok) { const err = await res.text(); throw new Error(`Brevo error: ${err}`); }
-  return await res.json();
-}
-
-const MONGO_URI = process.env.MONGO_URI;
-const client = new MongoClient(MONGO_URI, { serverApi: ServerApiVersion.v1 });
-let db;
-async function connectDB() {
-  await client.connect();
-  db = client.db('farmrent');
-  console.log('[DB] Connected to MongoDB Atlas');
-}
-function col(name) { return db.collection(name); }
+const express    = require('express');
+const cors       = require('cors');
+const bodyParser = require('body-parser');
+const bcrypt     = require('bcryptjs');
+const jwt        = require('jsonwebtoken');
+const mongoose   = require('mongoose');
+const nodemailer = require('nodemailer');
 
 const SECRET = process.env.FR_SECRET || 'dev_secret_change_me';
-const otpStore = {};
-const app = express();
-app.use(cors());
-app.use(express.json({ limit: '5mb' }));
-app.use(express.static(path.join(__dirname, '..')));
+const PORT   = process.env.PORT || 4000;
 
-function authMiddleware(req, res, next) {
-  const token = (req.headers['authorization'] || '').replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: 'No token' });
-  try { req.user = jwt.verify(token, SECRET); next(); } catch { res.status(401).json({ error: 'Invalid token' }); }
+// MongoDB Connection
+const MONGO_URI = process.env.MONGO_URI || '';
+if (!MONGO_URI) {
+  console.error('[DB] ERROR: MONGO_URI not set!');
+} else {
+  mongoose.connect(MONGO_URI)
+    .then(() => console.log('[DB] Connected to MongoDB Atlas'))
+    .catch(err => console.error('[DB] Connection error:', err.message));
 }
 
+// Schemas
+const UserSchema = new mongoose.Schema({
+  name: String,
+  email: { type: String, unique: true, lowercase: true },
+  pass: String,
+  role: { type: String, default: 'tenant' },
+  contact: String,
+});
+const EquipSchema = new mongoose.Schema({
+  id: { type: String, unique: true },
+  name: String, cost: Number, crops: [String], category: String,
+  desc: String, owner: String, ownerContact: String,
+  image: String, icon: String, available: { type: Boolean, default: true },
+});
+const BookingSchema = new mongoose.Schema({
+  id: { type: String, unique: true },
+  equipmentId: String, equipmentName: String, icon: String,
+  owner: String, user: String, userName: String,
+  date: String, days: Number, total: Number, status: { type: String, default: 'Pending' },
+});
+const OtpSchema = new mongoose.Schema({
+  email: { type: String, unique: true, lowercase: true },
+  code: String, expiresAt: Number,
+});
+const ChatSchema = new mongoose.Schema({
+  threadKey: { type: String, unique: true },
+  messages: [{ from: String, fromName: String, text: String, time: String }],
+});
+
+const User    = mongoose.model('User',    UserSchema);
+const Equip   = mongoose.model('Equip',   EquipSchema);
+const Booking = mongoose.model('Booking', BookingSchema);
+const Otp     = mongoose.model('Otp',     OtpSchema);
+const Chat    = mongoose.model('Chat',    ChatSchema);
+
+// Email Setup
+const GMAIL_USER = process.env.GMAIL_USER || '';
+const GMAIL_PASS = process.env.GMAIL_PASS || '';
+let mailer = null;
+if (GMAIL_USER && GMAIL_PASS) {
+  mailer = nodemailer.createTransport({
+    service: 'gmail',
+    auth: { user: GMAIL_USER, pass: GMAIL_PASS.replace(/\s/g, '') },
+  });
+  console.log('[MAIL] Gmail configured for:', GMAIL_USER);
+} else {
+  console.warn('[MAIL] WARNING: No email configured. Set GMAIL_USER and GMAIL_PASS.');
+}
+
+async function sendOtpEmail(email, code) {
+  if (!mailer) { console.warn('[MAIL] No mailer — OTP code:', code); return; }
+  try {
+    await mailer.sendMail({
+      from: `"FarmRent" <${GMAIL_USER}>`,
+      to: email,
+      subject: 'Your FarmRent OTP Code',
+      html: `<div style="font-family:Arial,sans-serif;max-width:400px;margin:auto;padding:24px;border:1px solid #e0e0e0;border-radius:8px;">
+        <h2 style="color:#2e7d32;">🌾 FarmRent OTP</h2>
+        <p>Your one-time password is:</p>
+        <div style="font-size:36px;font-weight:bold;letter-spacing:8px;color:#2e7d32;padding:16px 0;">${code}</div>
+        <p style="color:#666;">This code expires in <strong>5 minutes</strong>. Do not share it with anyone.</p>
+      </div>`,
+      text: `Your FarmRent OTP is ${code}. Expires in 5 minutes.`,
+    });
+    console.log('[MAIL] OTP sent to', email);
+  } catch (e) { console.error('[MAIL] Failed:', e.message); }
+}
+
+function genOtp() { return Math.floor(100000 + Math.random() * 900000).toString(); }
+
+const app = express();
+app.use(cors());
+app.use(bodyParser.json({ limit: '10mb' }));
+
+// Health
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
-app.get('/api/equip', async (req, res) => {
-  try { res.json(await col('equip').find({}, { projection: { _id: 0 } }).toArray()); } catch (e) { res.status(500).json({ error: e.message }); }
-});
-app.post('/api/equip', authMiddleware, async (req, res) => {
-  try { const item = req.body; if (!item || !item.id) return res.status(400).json({ error: 'Invalid payload' }); await col('equip').replaceOne({ id: item.id }, item, { upsert: true }); res.json(item); } catch (e) { res.status(500).json({ error: e.message }); }
-});
-app.put('/api/equip/:id', authMiddleware, async (req, res) => {
-  try { const result = await col('equip').findOneAndUpdate({ id: req.params.id }, { $set: req.body }, { returnDocument: 'after', projection: { _id: 0 } }); if (!result) return res.status(404).json({ error: 'Not found' }); res.json(result); } catch (e) { res.status(500).json({ error: e.message }); }
-});
-app.delete('/api/equip/:id', authMiddleware, async (req, res) => {
-  try { await col('equip').deleteOne({ id: req.params.id }); res.json({ ok: true }); } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.get('/api/bookings', authMiddleware, async (req, res) => {
-  try { res.json(await col('bookings').find({}, { projection: { _id: 0 } }).toArray()); } catch (e) { res.status(500).json({ error: e.message }); }
-});
-app.post('/api/bookings', authMiddleware, async (req, res) => {
-  try { const b = req.body; if (!b || !b.id) return res.status(400).json({ error: 'Invalid payload' }); await col('bookings').replaceOne({ id: b.id }, b, { upsert: true }); res.json(b); } catch (e) { res.status(500).json({ error: e.message }); }
-});
-app.put('/api/bookings/:id', authMiddleware, async (req, res) => {
-  try { const result = await col('bookings').findOneAndUpdate({ id: req.params.id }, { $set: req.body }, { returnDocument: 'after', projection: { _id: 0 } }); if (!result) return res.status(404).json({ error: 'Not found' }); res.json(result); } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.get('/api/chats/:threadKey', authMiddleware, async (req, res) => {
-  try { const thread = await col('chats').findOne({ threadKey: req.params.threadKey }, { projection: { _id: 0 } }); res.json(thread ? thread.messages : []); } catch (e) { res.status(500).json({ error: e.message }); }
-});
-app.post('/api/chats/:threadKey', authMiddleware, async (req, res) => {
-  try { await col('chats').updateOne({ threadKey: req.params.threadKey }, { $push: { messages: req.body } }, { upsert: true }); res.json(req.body); } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
+// Signup
 app.post('/api/signup', async (req, res) => {
   try {
-    const { name, email, pass, role, contact } = req.body;
-    if (!name || !email || !pass || !role) return res.status(400).json({ error: 'Missing fields' });
-    if (await col('users').findOne({ email })) return res.status(409).json({ error: 'Email already registered' });
-    const hash = await bcrypt.hash(pass, 10);
-    await col('users').insertOne({ name, email, pass: hash, role, contact: contact || '' });
-    const token = jwt.sign({ email, name, role }, SECRET, { expiresIn: '7d' });
-    res.json({ user: { email, name, role, contact: contact || '' }, token });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+    const { name, email, pass, role, contact, otp } = req.body || {};
+    if (!name || !email || !pass || !otp) return res.status(400).json({ error: 'Invalid payload' });
+    const otpRec = await Otp.findOne({ email: email.toLowerCase() });
+    if (!otpRec || otpRec.code !== otp.toString() || Date.now() > otpRec.expiresAt)
+      return res.status(400).json({ error: 'Invalid or expired OTP' });
+    const exists = await User.findOne({ email: email.toLowerCase() });
+    if (exists) return res.status(409).json({ error: 'Email already registered' });
+    const hashed = bcrypt.hashSync(pass, 10);
+    const user = await User.create({ name, email: email.toLowerCase(), pass: hashed, role: role || 'tenant', contact: contact || '' });
+    await Otp.deleteOne({ email: email.toLowerCase() });
+    const token = jwt.sign({ email: user.email, name: user.name, role: user.role }, SECRET, { expiresIn: '7d' });
+    res.json({ token, user: { name: user.name, email: user.email, role: user.role, contact: user.contact } });
+  } catch (e) { console.error('[SIGNUP]', e.message); res.status(500).json({ error: 'Server error' }); }
 });
 
+// Login
 app.post('/api/login', async (req, res) => {
   try {
-    const { email, pass } = req.body;
-    const user = await col('users').findOne({ email });
-    if (!user || !(await bcrypt.compare(pass, user.pass))) return res.status(401).json({ error: 'Invalid credentials' });
+    const { email, pass } = req.body || {};
+    if (!email || !pass) return res.status(400).json({ error: 'Invalid payload' });
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user || !bcrypt.compareSync(pass, user.pass)) return res.status(401).json({ error: 'Invalid credentials' });
     const token = jwt.sign({ email: user.email, name: user.name, role: user.role }, SECRET, { expiresIn: '7d' });
-    res.json({ user: { email: user.email, name: user.name, role: user.role, contact: user.contact || '' }, token });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+    res.json({ token, user: { name: user.name, email: user.email, role: user.role, contact: user.contact } });
+  } catch (e) { console.error('[LOGIN]', e.message); res.status(500).json({ error: 'Server error' }); }
 });
 
+// Request OTP
 app.post('/api/request-otp', async (req, res) => {
   try {
-    const { email } = req.body;
+    const { email } = req.body || {};
     if (!email) return res.status(400).json({ error: 'Email required' });
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    otpStore[email] = { code, expires: Date.now() + 10 * 60 * 1000 };
-    await sendEmail(email, 'Your FarmRent OTP', `<div style="font-family:sans-serif;max-width:400px;margin:auto;padding:24px;border:1px solid #e0e0e0;border-radius:8px;"><h2 style="color:#5a7a3a;">🌾 FarmRent OTP</h2><p>Your one-time password is:</p><h1 style="letter-spacing:8px;color:#333;">${code}</h1><p style="color:#888;font-size:12px;">Valid for 10 minutes.</p></div>`);
-    console.log(`[MAIL] OTP email sent to ${email}`);
-    res.json({ ok: true });
-  } catch (e) { console.error('[MAIL] Error:', e.message); res.status(500).json({ error: 'Failed to send OTP' }); }
+    const code = genOtp();
+    const expiresAt = Date.now() + 5 * 60 * 1000;
+    await Otp.findOneAndUpdate({ email: email.toLowerCase() }, { code, expiresAt }, { upsert: true, new: true });
+    await sendOtpEmail(email, code);
+    if (process.env.FR_DEV_OTP === '1') return res.json({ ok: true, code });
+    return res.json({ ok: true });
+  } catch (e) { console.error('[REQUEST-OTP]', e.message); res.status(500).json({ error: 'Server error' }); }
 });
 
+// Verify OTP (issues token)
 app.post('/api/verify-otp', async (req, res) => {
   try {
-    const { email, code } = req.body;
-    const entry = otpStore[email];
-    if (!entry || entry.code !== code || Date.now() > entry.expires) return res.status(400).json({ error: 'Invalid or expired OTP' });
-    delete otpStore[email];
-    const user = await col('users').findOne({ email });
-    if (!user) return res.status(404).json({ error: 'User not found' });
+    const { email, code } = req.body || {};
+    if (!email || !code) return res.status(400).json({ error: 'Email and code required' });
+    const otpRec = await Otp.findOne({ email: email.toLowerCase() });
+    if (!otpRec) return res.status(400).json({ error: 'No OTP requested' });
+    if (Date.now() > otpRec.expiresAt) { await Otp.deleteOne({ email: email.toLowerCase() }); return res.status(400).json({ error: 'OTP expired' }); }
+    if (otpRec.code !== code.toString()) return res.status(400).json({ error: 'Invalid code' });
+    let user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) user = await User.create({ name: email.split('@')[0], email: email.toLowerCase(), pass: '', role: 'tenant', contact: '' });
+    await Otp.deleteOne({ email: email.toLowerCase() });
     const token = jwt.sign({ email: user.email, name: user.name, role: user.role }, SECRET, { expiresIn: '7d' });
-    res.json({ user: { email: user.email, name: user.name, role: user.role, contact: user.contact || '' }, token });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+    res.json({ token, user: { name: user.name, email: user.email, role: user.role, contact: user.contact } });
+  } catch (e) { console.error('[VERIFY-OTP]', e.message); res.status(500).json({ error: 'Server error' }); }
 });
 
+// Verify OTP Only (signup flow)
 app.post('/api/verify-otp-only', async (req, res) => {
   try {
-    const { email, code } = req.body;
-    const entry = otpStore[email];
-    if (!entry || entry.code !== code || Date.now() > entry.expires) return res.status(400).json({ error: 'Invalid or expired OTP' });
-    delete otpStore[email];
+    const { email, code } = req.body || {};
+    if (!email || !code) return res.status(400).json({ error: 'Email and code required' });
+    const otpRec = await Otp.findOne({ email: email.toLowerCase() });
+    if (!otpRec) return res.status(400).json({ error: 'No OTP requested' });
+    if (Date.now() > otpRec.expiresAt) { await Otp.deleteOne({ email: email.toLowerCase() }); return res.status(400).json({ error: 'OTP expired' }); }
+    if (otpRec.code !== code.toString()) return res.status(400).json({ error: 'Invalid code' });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error('[VERIFY-OTP-ONLY]', e.message); res.status(500).json({ error: 'Server error' }); }
 });
 
-app.get('*', (req, res) => res.sendFile(path.join(__dirname, '..', 'index.html')));
+// Equipment
+app.get('/api/equip', async (req, res) => {
+  try { res.json(await Equip.find({})); } catch (e) { res.status(500).json({ error: 'Server error' }); }
+});
+app.post('/api/equip', async (req, res) => {
+  try {
+    const item = req.body;
+    if (!item || !item.id) return res.status(400).json({ error: 'Invalid payload' });
+    const result = await Equip.findOneAndUpdate({ id: item.id }, item, { upsert: true, new: true });
+    res.json(result);
+  } catch (e) { res.status(500).json({ error: 'Server error' }); }
+});
+app.put('/api/equip/:id', async (req, res) => {
+  try {
+    const result = await Equip.findOneAndUpdate({ id: req.params.id }, req.body, { new: true });
+    if (!result) return res.status(404).json({ error: 'Not found' });
+    res.json(result);
+  } catch (e) { res.status(500).json({ error: 'Server error' }); }
+});
+app.delete('/api/equip/:id', async (req, res) => {
+  try { await Equip.deleteOne({ id: req.params.id }); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: 'Server error' }); }
+});
 
-const PORT = process.env.PORT || 3000;
-connectDB().then(() => {
-  app.listen(PORT, () => console.log(`[SERVER] Running on port ${PORT}`));
-}).catch(err => { console.error('[DB] Failed to connect:', err); process.exit(1); });
+// Bookings
+app.get('/api/bookings', async (req, res) => {
+  try { res.json(await Booking.find({})); } catch (e) { res.status(500).json({ error: 'Server error' }); }
+});
+app.post('/api/bookings', async (req, res) => {
+  try {
+    const b = req.body;
+    if (!b || !b.id) return res.status(400).json({ error: 'Invalid payload' });
+    const result = await Booking.findOneAndUpdate({ id: b.id }, b, { upsert: true, new: true });
+    res.json(result);
+  } catch (e) { res.status(500).json({ error: 'Server error' }); }
+});
+app.put('/api/bookings/:id', async (req, res) => {
+  try {
+    const result = await Booking.findOneAndUpdate({ id: req.params.id }, req.body, { new: true });
+    if (!result) return res.status(404).json({ error: 'Not found' });
+    res.json(result);
+  } catch (e) { res.status(500).json({ error: 'Server error' }); }
+});
+
+// Chats
+app.get('/api/chats/:thread', async (req, res) => {
+  try {
+    const chat = await Chat.findOne({ threadKey: req.params.thread });
+    res.json(chat ? chat.messages : []);
+  } catch (e) { res.status(500).json({ error: 'Server error' }); }
+});
+app.post('/api/chats/:thread', async (req, res) => {
+  try {
+    const { text, fromName, from } = req.body || {};
+    if (!text) return res.status(400).json({ error: 'Invalid payload' });
+    let senderEmail = from || 'anonymous';
+    let senderName = fromName || senderEmail;
+    const auth = req.headers['authorization'] || req.headers['x-fr-token'];
+    if (auth) {
+      try {
+        const token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : auth;
+        const payload = jwt.verify(token, SECRET);
+        senderEmail = payload.email; senderName = payload.name;
+      } catch {}
+    }
+    const time = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+    const msg = { from: senderEmail, fromName: senderName, text, time };
+    await Chat.findOneAndUpdate({ threadKey: req.params.thread }, { $push: { messages: msg } }, { upsert: true, new: true });
+    res.json(msg);
+  } catch (e) { res.status(500).json({ error: 'Server error' }); }
+});
+
+app.listen(PORT, () => console.log(`[SERVER] Running on port ${PORT}`));
