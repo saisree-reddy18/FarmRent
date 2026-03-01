@@ -62,6 +62,8 @@ const Chat    = mongoose.model('Chat',    ChatSchema);
 // ============================================================
 const BREVO_API_KEY = process.env.BREVO_API_KEY || '';
 const SENDER_EMAIL  = process.env.SENDER_EMAIL  || 'harunsanayapalli@gmail.com';
+console.log('[ENV] BREVO_API_KEY:', BREVO_API_KEY ? 'LOADED ✓' : 'MISSING ✗');
+console.log('[ENV] SENDER_EMAIL:', SENDER_EMAIL);
 
 function sendBrevoEmail(to, subject, htmlContent, textContent) {
   return new Promise((resolve, reject) => {
