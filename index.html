@@ -229,7 +229,45 @@
           <input id="eName" class="form-input" placeholder="e.g. John Deere Tractor 5310"/>
 
           <label class="form-label">Cost Per Day (₹) *</label>
-          <input id="eCost" class="form-input" type="number" placeholder="e.g. 1200"/>
+          <div style="position:relative;">
+            <input id="eCost" class="form-input" type="number" placeholder="e.g. 1200" oninput="debouncePricePredict()" onchange="debouncePricePredict()"/>
+            <button type="button" class="predict-btn" onclick="runPricePredict()" title="Get AI Price Suggestion">🤖 Predict</button>
+          </div>
+
+          <!-- Price Prediction Panel -->
+          <div id="pricePredictPanel" style="display:none;" class="price-predict-panel">
+            <div class="predict-header">
+              <span class="predict-icon">📊</span>
+              <span class="predict-title">AI Price Suggestion</span>
+              <span id="predictSeason" class="predict-season-badge"></span>
+            </div>
+            <div class="predict-body">
+              <div class="predict-range-row">
+                <div class="predict-range-item">
+                  <div class="predict-range-label">Min</div>
+                  <div class="predict-range-val" id="predictMin">—</div>
+                </div>
+                <div class="predict-range-item suggested">
+                  <div class="predict-range-label">Suggested</div>
+                  <div class="predict-range-val highlight" id="predictSuggested">—</div>
+                </div>
+                <div class="predict-range-item">
+                  <div class="predict-range-label">Max</div>
+                  <div class="predict-range-val" id="predictMax">—</div>
+                </div>
+              </div>
+              <div class="predict-meter-wrap">
+                <div class="predict-meter-bar">
+                  <div id="predictMeterFill" class="predict-meter-fill"></div>
+                  <div id="predictMeterThumb" class="predict-meter-thumb"></div>
+                </div>
+                <div id="predictPriceTag" class="predict-price-tag"></div>
+              </div>
+              <div id="predictVerdict" class="predict-verdict"></div>
+              <div id="predictInsight" class="predict-insight"></div>
+              <button type="button" class="predict-apply-btn" onclick="applyPredictedPrice()">✅ Apply Suggested Price</button>
+            </div>
+          </div>
 
           <label class="form-label">Suitable Crops (comma separated) *</label>
           <input id="eCrops" class="form-input" placeholder="e.g. Rice, Wheat, Sugarcane"/>

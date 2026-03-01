@@ -26,7 +26,7 @@ function uid()  { return 'id' + Math.random().toString(36).slice(2, 9); }
 function esc(s) { return (s || '').toString().replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[c]); }
 
 // API sync settings
-const API_BASE = 'https://farmrent-1.onrender.com/api';
+const API_BASE = 'http://localhost:4000/api';
 
 async function apiAvailable() {
   try {
@@ -752,7 +752,8 @@ function renderOwnerList() {
     c.innerHTML = `<div class="empty"><div class="empty-icon">🚜</div><h3>Owner access required</h3></div>`;
     return;
   }
-const mine = db.equip.filter(e => e.owner === session.name || e.ownerEmail === session.email);  if (!mine.length) {
+  const mine = db.equip.filter(e => e.owner === session.name);
+  if (!mine.length) {
     c.innerHTML = `<div class="empty">
       <div class="empty-icon">📋</div>
       <h3>No listings yet</h3>
@@ -895,7 +896,7 @@ function saveEquipment() {
     } else {
       const newItem = {
         id: uid(), name, cost, crops, category: cat, desc,
-        owner: session.name, ownerEmail: session.email, ownerContact: contact,
+        owner: session.name, ownerContact: contact,
         image: imageData || '', icon: pickedIcon, available,
       };
       (async () => {
@@ -938,7 +939,8 @@ function renderRequests() {
     c.innerHTML = `<div class="empty"><div class="empty-icon">📩</div><h3>Owner access required</h3></div>`;
     return;
   }
-const myIds = db.equip.filter(e => e.owner === session.name || e.ownerEmail === session.email).map(e => e.id);  const reqs  = db.bookings.filter(b => myIds.includes(b.equipmentId));
+  const myIds = db.equip.filter(e => e.owner === session.name).map(e => e.id);
+  const reqs  = db.bookings.filter(b => myIds.includes(b.equipmentId));
   if (!reqs.length) {
     c.innerHTML = `<div class="empty"><div class="empty-icon">📩</div><h3>No booking requests yet</h3></div>`;
     return;
@@ -991,7 +993,8 @@ function getUnreadCountForThread(threadKey) {
   const tenantEmail = parts[1];
   const eq = db.equip.find(e => e.id === equipId);
   const isTenant = session.email === tenantEmail;
-const isOwner = eq && (session.name === eq.owner || session.email === eq.ownerEmail);  if (!isTenant && !isOwner) return 0;
+  const isOwner = eq && session.name === eq.owner;
+  if (!isTenant && !isOwner) return 0;
 
   // Get the last read message index for this user
   const readStatus = messageReadStatus[threadKey] || {};
@@ -1053,7 +1056,8 @@ function renderMessages() {
     if (!eq) return;
 
     // Determine if user is in this thread
-const isOwner = session.name === eq.owner || session.email === eq.ownerEmail;    const isTenant = session.email === tenantEmail;
+    const isOwner = session.name === eq.owner;
+    const isTenant = session.email === tenantEmail;
     if (!isOwner && !isTenant) return;
 
     const msgs = chats[k] || [];
@@ -1198,7 +1202,8 @@ function openChatFor(equipId, tenantEmail) {
 
   // build or open appropriate thread
   let threadKey;
-if (session.name === eq.owner || session.email === eq.ownerEmail) {    // owner: choose tenant from booking list or passed param
+  if (session.name === eq.owner) {
+    // owner: choose tenant from booking list or passed param
     const tenant = tenantEmail || chooseTenantForOwner(equipId);
     if (!tenant) { goTo('messages'); return; }
     threadKey = chatThreadKey(equipId, tenant);
@@ -1217,7 +1222,7 @@ if (session.name === eq.owner || session.email === eq.ownerEmail) {    // owner:
       equipId,
       tenantEmail: threadKey.split('::')[1],
       equipName: eq.name,
-    otherUserName: (session.name === eq.owner || session.email === eq.ownerEmail) ? getUserNameByEmail(threadKey.split('::')[1]) : eq.owner
+      otherUserName: session.name === eq.owner ? getUserNameByEmail(threadKey.split('::')[1]) : eq.owner
     };
     openChatThread(threadKey, info);
   }, 100);
@@ -1260,7 +1265,8 @@ function sendChat() {
   if (!eq) { showToast('Equipment not found'); return; }
   
   // Only allow the thread initiator (tenantEmail) or the equipment owner to send messages
-const isOwner = session.name === eq.owner || session.email === eq.ownerEmail;  const isTenant = session.email === tenantEmail;
+  const isOwner = session.name === eq.owner;
+  const isTenant = session.email === tenantEmail;
   
   if (!isOwner && !isTenant) {
     showToast('You do not have permission to message in this thread');
@@ -1373,12 +1379,12 @@ async function getThreadKeysForSession() {
   const keys = new Set(Object.keys(chats));
   if (session.role === 'tenant') {
     db.bookings.filter(b => b.user === session.email).forEach(b => keys.add(chatThreadKey(b.equipmentId, session.email)));
-} else if (session.role === 'owner') {
-db.equip.filter(e => e.owner === session.name || e.ownerEmail === session.email).forEach(eq => {
+  } else if (session.role === 'owner') {
+    db.equip.filter(e => e.owner === session.name).forEach(eq => {
       db.bookings.filter(b => b.equipmentId === eq.id).forEach(b => keys.add(chatThreadKey(eq.id, b.user)));
-    });    // Also include any threads already in chats object
+    });
   }
-return [...keys];
+  return [...keys];
 }
 
 async function pollServer() {
@@ -1405,13 +1411,148 @@ async function pollServer() {
       }
     }));
 
-   if (changed) {
+    if (changed) {
       persist();
       // update UI
       renderProducts(); renderChips(); renderBookings(); renderRequests(); renderMessages();
-      } renderChatMsgs();
-    
+    }
   } catch (e) {
     // silent fail (offline)
   }
 }
+
+/* ----------------------------------------------------------
+   PRICE PREDICTION ENGINE
+   ---------------------------------------------------------- */
+
+// Base price data per category (₹/day) based on Indian market research
+const PRICE_DATA = {
+  Tractor:   { min: 800,  suggested: 1200, max: 2000 },
+  Harvester: { min: 1500, suggested: 2500, max: 4000 },
+  Planting:  { min: 400,  suggested: 700,  max: 1200 },
+  Tillage:   { min: 600,  suggested: 950,  max: 1600 },
+  Irrigation:{ min: 300,  suggested: 550,  max: 900  },
+  Spraying:  { min: 250,  suggested: 450,  max: 800  },
+  Transport: { min: 700,  suggested: 1100, max: 1800 },
+  Other:     { min: 300,  suggested: 600,  max: 1200 },
+};
+
+// Season multipliers (month-based)
+const SEASON_MULTIPLIERS = {
+  // Kharif sowing season (Jun-Aug) - high demand
+  5:  { mult: 1.25, label: '🌧️ Kharif Season', desc: 'High demand — Kharif sowing season' },
+  6:  { mult: 1.30, label: '🌧️ Kharif Season', desc: 'Peak demand — Kharif sowing season' },
+  7:  { mult: 1.20, label: '🌧️ Kharif Season', desc: 'High demand — Kharif sowing season' },
+  // Kharif harvest (Oct-Nov) - very high demand
+  9:  { mult: 1.35, label: '🌾 Harvest Season', desc: 'Very high demand — Kharif harvest season' },
+  10: { mult: 1.40, label: '🌾 Harvest Season', desc: 'Peak demand — Kharif harvest season' },
+  // Rabi sowing (Nov-Dec)
+  11: { mult: 1.25, label: '🌱 Rabi Sowing', desc: 'High demand — Rabi sowing season' },
+  // Rabi harvest (Mar-Apr)
+  2:  { mult: 1.30, label: '🌾 Rabi Harvest', desc: 'High demand — Rabi harvest season' },
+  3:  { mult: 1.35, label: '🌾 Rabi Harvest', desc: 'Peak demand — Rabi harvest season' },
+  // Off-season (low demand)
+  0:  { mult: 0.85, label: '❄️ Off Season', desc: 'Lower demand — off season period' },
+  1:  { mult: 0.90, label: '❄️ Off Season', desc: 'Low demand — off season period' },
+  4:  { mult: 0.95, label: '🌤️ Pre-Season',  desc: 'Moderate demand — pre-season period' },
+  8:  { mult: 1.10, label: '🌦️ Mid Season',  desc: 'Moderate demand — mid season period' },
+};
+
+// Demand multipliers based on booking history
+function getDemandMultiplier() {
+  if (!db || !db.bookings) return { mult: 1.0, label: 'No data', desc: 'No booking history yet' };
+  const category = $('eCat') ? $('eCat').value : 'Other';
+  // Count bookings for same category equipment
+  const catEquipIds = db.equip.filter(e => e.category === category).map(e => e.id);
+  const bookingCount = db.bookings.filter(b => catEquipIds.includes(b.equipmentId)).length;
+  if (bookingCount >= 10) return { mult: 1.20, label: 'Very High', desc: `${bookingCount} bookings — very high demand for ${category}` };
+  if (bookingCount >= 5)  return { mult: 1.10, label: 'High',      desc: `${bookingCount} bookings — high demand for ${category}` };
+  if (bookingCount >= 2)  return { mult: 1.05, label: 'Moderate',  desc: `${bookingCount} bookings — moderate demand for ${category}` };
+  return { mult: 1.0, label: 'Low', desc: `Few bookings — building demand for ${category}` };
+}
+
+let _predictTimer = null;
+function debouncePricePredict() {
+  clearTimeout(_predictTimer);
+  _predictTimer = setTimeout(() => runPricePredict(), 600);
+}
+
+let _lastPredicted = null;
+
+function runPricePredict() {
+  const category = $('eCat') ? $('eCat').value : 'Other';
+  const base = PRICE_DATA[category] || PRICE_DATA['Other'];
+  const month = new Date().getMonth(); // 0-11
+  const season = SEASON_MULTIPLIERS[month] || { mult: 1.0, label: '📅 Normal', desc: 'Regular season' };
+  const demand = getDemandMultiplier();
+
+  // Calculate final prices
+  const totalMult = season.mult * demand.mult;
+  const min       = Math.round(base.min * totalMult / 50) * 50;
+  const suggested = Math.round(base.suggested * totalMult / 50) * 50;
+  const max       = Math.round(base.max * totalMult / 50) * 50;
+  _lastPredicted  = suggested;
+
+  // Show panel
+  const panel = $('pricePredictPanel');
+  if (panel) panel.style.display = 'block';
+
+  // Fill values
+  $('predictMin').textContent       = '₹' + min;
+  $('predictSuggested').textContent = '₹' + suggested;
+  $('predictMax').textContent       = '₹' + max;
+  $('predictSeason').textContent    = season.label;
+
+  // Meter — show current cost vs range
+  const currentCost = parseFloat($('eCost').value) || suggested;
+  const pct = Math.min(100, Math.max(0, ((currentCost - min) / (max - min)) * 100));
+  const fill = $('predictMeterFill');
+  const thumb = $('predictMeterThumb');
+  const tag = $('predictPriceTag');
+  if (fill)  fill.style.width  = pct + '%';
+  if (thumb) { thumb.style.left = pct + '%'; }
+  if (tag)   { tag.style.left = pct + '%'; tag.textContent = '₹' + currentCost; }
+
+  // Verdict
+  const verdict = $('predictVerdict');
+  if (verdict) {
+    if (currentCost < min) {
+      verdict.textContent = '⚠️ Price is too low — you may be undercharging';
+      verdict.className = 'predict-verdict verdict-low';
+    } else if (currentCost > max) {
+      verdict.textContent = '🔴 Price is too high — may reduce bookings';
+      verdict.className = 'predict-verdict verdict-high';
+    } else if (Math.abs(currentCost - suggested) <= suggested * 0.1) {
+      verdict.textContent = '✅ Great price! Competitive and fair';
+      verdict.className = 'predict-verdict verdict-good';
+    } else if (currentCost < suggested) {
+      verdict.textContent = '🟡 Slightly below market — consider raising price';
+      verdict.className = 'predict-verdict verdict-low';
+    } else {
+      verdict.textContent = '🟡 Slightly above market — still reasonable';
+      verdict.className = 'predict-verdict verdict-high';
+    }
+  }
+
+  // Insight
+  const insight = $('predictInsight');
+  if (insight) {
+    insight.textContent = season.desc + ' · Demand: ' + demand.desc;
+  }
+}
+
+function applyPredictedPrice() {
+  if (_lastPredicted) {
+    $('eCost').value = _lastPredicted;
+    showToast('✅ Suggested price ₹' + _lastPredicted + ' applied!');
+    runPricePredict(); // refresh meter
+  }
+}
+
+// Also re-run prediction when category changes
+document.addEventListener('DOMContentLoaded', () => {
+  const cat = $('eCat');
+  if (cat) cat.addEventListener('change', () => {
+    if ($('pricePredictPanel').style.display !== 'none') runPricePredict();
+  });
+});

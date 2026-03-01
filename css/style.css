@@ -833,3 +833,167 @@ footer p  { font-size: 14px; opacity: .75; line-height: 1.6; }
   .nav-links       { order: 3; width: 100%; overflow-x: auto; padding-bottom: 4px; }
   .footer-contact  { width: 100%; }
 }
+
+/* ============================================================
+   PRICE PREDICTION PANEL
+   ============================================================ */
+.predict-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: linear-gradient(135deg, #2e7d32, #66bb6a);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+.predict-btn:hover { transform: translateY(-50%) scale(1.05); box-shadow: 0 2px 8px rgba(46,125,50,0.4); }
+
+.price-predict-panel {
+  margin-top: 12px;
+  background: linear-gradient(135deg, #f0faf0, #e8f5e9);
+  border: 1.5px solid #a5d6a7;
+  border-radius: 14px;
+  overflow: hidden;
+  animation: slideDown 0.3s ease;
+}
+@keyframes slideDown { from { opacity:0; transform:translateY(-10px); } to { opacity:1; transform:translateY(0); } }
+
+.predict-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #2e7d32, #388e3c);
+  color: white;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.predict-icon { font-size: 16px; }
+.predict-title { flex: 1; letter-spacing: 0.3px; }
+.predict-season-badge {
+  background: rgba(255,255,255,0.2);
+  border-radius: 20px;
+  padding: 2px 10px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.predict-body { padding: 14px 16px; }
+
+.predict-range-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.predict-range-item {
+  flex: 1;
+  text-align: center;
+  background: white;
+  border-radius: 10px;
+  padding: 8px 4px;
+  border: 1px solid #c8e6c9;
+}
+.predict-range-item.suggested {
+  border-color: #2e7d32;
+  background: linear-gradient(135deg, #fff, #f1f8e9);
+  transform: scale(1.05);
+  box-shadow: 0 2px 8px rgba(46,125,50,0.15);
+}
+.predict-range-label { font-size: 10px; color: #777; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+.predict-range-val { font-size: 15px; font-weight: 700; color: #2e7d32; }
+.predict-range-val.highlight { font-size: 18px; color: #1b5e20; }
+
+.predict-meter-wrap { position: relative; margin-bottom: 12px; }
+.predict-meter-bar {
+  height: 8px;
+  background: linear-gradient(90deg, #ef5350, #ffd740, #66bb6a);
+  border-radius: 10px;
+  position: relative;
+  overflow: visible;
+}
+.predict-meter-fill {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  background: rgba(0,0,0,0.1);
+  border-radius: 10px;
+  transition: width 0.5s ease;
+}
+.predict-meter-thumb {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 18px; height: 18px;
+  background: white;
+  border: 3px solid #2e7d32;
+  border-radius: 50%;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+  transition: left 0.5s ease;
+}
+.predict-price-tag {
+  position: absolute;
+  top: -28px;
+  transform: translateX(-50%);
+  background: #2e7d32;
+  color: white;
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  transition: left 0.5s ease;
+}
+.predict-price-tag::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 4px solid transparent;
+  border-top-color: #2e7d32;
+  border-bottom: none;
+}
+
+.predict-verdict {
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 6px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  display: inline-block;
+  width: 100%;
+  box-sizing: border-box;
+}
+.verdict-good { background: #e8f5e9; color: #2e7d32; }
+.verdict-low  { background: #fff3e0; color: #e65100; }
+.verdict-high { background: #fce4ec; color: #c62828; }
+
+.predict-insight {
+  font-size: 12px;
+  color: #555;
+  text-align: center;
+  margin-bottom: 10px;
+  line-height: 1.5;
+}
+
+.predict-apply-btn {
+  width: 100%;
+  background: linear-gradient(135deg, #2e7d32, #66bb6a);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  padding: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  letter-spacing: 0.3px;
+}
+.predict-apply-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(46,125,50,0.3); }
