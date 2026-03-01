@@ -26,7 +26,7 @@ function uid()  { return 'id' + Math.random().toString(36).slice(2, 9); }
 function esc(s) { return (s || '').toString().replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[c]); }
 
 // API sync settings
-const API_BASE = 'http://localhost:4000/api';
+const API_BASE = 'https://farmrent-1.onrender.com/api';
 
 async function apiAvailable() {
   try {
