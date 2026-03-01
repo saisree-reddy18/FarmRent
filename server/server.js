@@ -5,7 +5,8 @@ const bodyParser = require('body-parser');
 const bcrypt     = require('bcryptjs');
 const jwt        = require('jsonwebtoken');
 const mongoose   = require('mongoose');
-const nodemailer = require('nodemailer');
+const https      = require('https');
+const path       = require('path');
 
 const SECRET = process.env.FR_SECRET || 'dev_secret_change_me';
 const PORT   = process.env.PORT || 4000;
@@ -55,35 +56,66 @@ const Booking = mongoose.model('Booking', BookingSchema);
 const Otp     = mongoose.model('Otp',     OtpSchema);
 const Chat    = mongoose.model('Chat',    ChatSchema);
 
-// Email Setup
-const GMAIL_USER = process.env.GMAIL_USER || '';
-const GMAIL_PASS = process.env.GMAIL_PASS || '';
-let mailer = null;
-if (GMAIL_USER && GMAIL_PASS) {
-  mailer = nodemailer.createTransport({
-    service: 'gmail',
-    auth: { user: GMAIL_USER, pass: GMAIL_PASS.replace(/\s/g, '') },
+// ============================================================
+// BREVO HTTP API — works on Render free plan (HTTPS port 443)
+// Set BREVO_API_KEY in Render environment variables
+// ============================================================
+const BREVO_API_KEY = process.env.BREVO_API_KEY || '';
+const SENDER_EMAIL  = process.env.SENDER_EMAIL  || 'harunsanayapalli@gmail.com';
+
+function sendBrevoEmail(to, subject, htmlContent, textContent) {
+  return new Promise((resolve, reject) => {
+    const payload = JSON.stringify({
+      sender: { name: 'FarmRent', email: SENDER_EMAIL },
+      to: [{ email: to }],
+      subject,
+      htmlContent,
+      textContent,
+    });
+
+    const options = {
+      hostname: 'api.brevo.com',
+      path: '/v3/smtp/email',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'api-key': BREVO_API_KEY,
+        'Content-Length': Buffer.byteLength(payload),
+      },
+    };
+
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          resolve(data);
+        } else {
+          reject(new Error(`Brevo API error ${res.statusCode}: ${data}`));
+        }
+      });
+    });
+
+    req.on('error', reject);
+    req.write(payload);
+    req.end();
   });
-  console.log('[MAIL] Gmail configured for:', GMAIL_USER);
-} else {
-  console.warn('[MAIL] WARNING: No email configured. Set GMAIL_USER and GMAIL_PASS.');
 }
 
 async function sendOtpEmail(email, code) {
-  if (!mailer) { console.warn('[MAIL] No mailer — OTP code:', code); return; }
+  if (!BREVO_API_KEY) { console.warn('[MAIL] No BREVO_API_KEY — OTP code:', code); return; }
   try {
-    await mailer.sendMail({
-      from: `"FarmRent" <${GMAIL_USER}>`,
-      to: email,
-      subject: 'Your FarmRent OTP Code',
-      html: `<div style="font-family:Arial,sans-serif;max-width:400px;margin:auto;padding:24px;border:1px solid #e0e0e0;border-radius:8px;">
+    await sendBrevoEmail(
+      email,
+      'Your FarmRent OTP Code',
+      `<div style="font-family:Arial,sans-serif;max-width:400px;margin:auto;padding:24px;border:1px solid #e0e0e0;border-radius:8px;">
         <h2 style="color:#2e7d32;">🌾 FarmRent OTP</h2>
         <p>Your one-time password is:</p>
         <div style="font-size:36px;font-weight:bold;letter-spacing:8px;color:#2e7d32;padding:16px 0;">${code}</div>
         <p style="color:#666;">This code expires in <strong>5 minutes</strong>. Do not share it with anyone.</p>
       </div>`,
-      text: `Your FarmRent OTP is ${code}. Expires in 5 minutes.`,
-    });
+      `Your FarmRent OTP is ${code}. Expires in 5 minutes.`
+    );
     console.log('[MAIL] OTP sent to', email);
   } catch (e) { console.error('[MAIL] Failed:', e.message); }
 }
@@ -93,6 +125,10 @@ function genOtp() { return Math.floor(100000 + Math.random() * 900000).toString(
 const app = express();
 app.use(cors());
 app.use(bodyParser.json({ limit: '10mb' }));
+
+// Serve frontend static files
+const frontendPath = path.join(__dirname, '..');
+app.use(express.static(frontendPath));
 
 // Health
 app.get('/api/health', (req, res) => res.json({ ok: true }));
@@ -241,6 +277,11 @@ app.post('/api/chats/:thread', async (req, res) => {
     await Chat.findOneAndUpdate({ threadKey: req.params.thread }, { $push: { messages: msg } }, { upsert: true, new: true });
     res.json(msg);
   } catch (e) { res.status(500).json({ error: 'Server error' }); }
+});
+
+// Serve frontend for all other routes
+app.get('*', (req, res) => {
+  res.sendFile(path.join(frontendPath, 'index.html'));
 });
 
 app.listen(PORT, () => console.log(`[SERVER] Running on port ${PORT}`));
