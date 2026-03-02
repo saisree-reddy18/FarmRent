@@ -59,24 +59,12 @@
       <label class="form-label">Password</label>
       <input id="siPass" class="form-input" type="password" placeholder="Password"/>
 
-      <!-- Step 1: Send OTP (always shown) -->
-      <div id="siStep1" style="margin-top:12px;">
-        <button class="btn-primary" onclick="doSigninWithOtp()" style="width:100%">Send OTP to Sign In →</button>
+      <div style="margin-top:12px;">
+        <button class="btn-primary" onclick="doLogin()" style="width:100%">Sign In →</button>
         <div style="margin-top:8px;text-align:center;">
           <button class="btn-action" onclick="authTab('signup')" style="width:100%">Sign Up</button>
         </div>
       </div>
-
-      <!-- Step 2: Enter OTP (shown after OTP is sent) -->
-      <div id="siOtpRow" style="display:none;margin-top:12px;">
-        <label class="form-label">Enter OTP <span style="color:var(--muted);font-size:12px;">(sent to your email)</span></label>
-        <input id="siOtpCode" class="form-input" placeholder="123456" />
-        <div style="margin-top:8px;display:flex;gap:8px;">
-          <button class="btn-primary" onclick="verifyOtp()">Verify OTP →</button>
-          <button class="btn-action outline" onclick="doSigninWithOtp()">Resend</button>
-        </div>
-      </div>
-    </div>
 
     <!-- SIGNUP -->
     <div id="paneSignup" style="display:none">

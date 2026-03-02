@@ -246,10 +246,27 @@ function pickRole(r) {
 }
 
 function doSignin() {
-  // Routes through OTP flow
-  doSigninWithOtp();
+  doLogin();
 }
 
+function doLogin() {
+  const email = $('siEmail').value.trim().toLowerCase();
+  const pass  = $('siPass').value.trim();
+  if (!email) { showToast('❌ Please enter your email'); $('siEmail').focus(); return; }
+  if (!pass)  { showToast('❌ Please enter your password'); $('siPass').focus(); return; }
+  (async () => {
+    const res = await apiLogin({ email, pass });
+    if (!res || !res.token) {
+      showToast('❌ Invalid email or password');
+      return;
+    }
+    session = { email: res.user.email, name: res.user.name, role: res.user.role, contact: res.user.contact || '', token: res.token };
+    persist();
+    closeAuth();
+    renderAll();
+    showToast('✅ Welcome back, ' + res.user.name + '!');
+  })();
+}
 function doSigninWithOtp() {
   const email = $('siEmail').value.trim().toLowerCase();
   const pass  = $('siPass').value.trim();
@@ -316,15 +333,21 @@ async function verifySignupOtp() {
   const email = $('suEmail').value.trim().toLowerCase();
   const code  = $('suOtpCode').value.trim();
   if (!email || !code) { showToast('❌ Enter email and OTP'); return; }
-  const res = await fetch(API_BASE + '/verify-otp-only', {
-    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ email, code })
-  });
-  if (res.ok) {
-    signupOtpVerified = true;
-    const stat = $('suOtpStatus'); if (stat) stat.style.display = 'inline';
-    showToast('✅ OTP verified, you may now create your account');
-  } else {
-    showToast('❌ OTP verification failed');
+  try {
+    const res = await fetch(API_BASE + '/verify-otp-only', {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ email, code })
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      signupOtpVerified = true;
+      const stat = $('suOtpStatus'); if (stat) stat.style.display = 'inline';
+      showToast('✅ OTP verified, you may now create your account');
+    } else {
+      showToast('❌ OTP verification failed: ' + (data.error || 'Invalid code'));
+    }
+  } catch (e) {
+    console.error('verifySignupOtp error:', e);
+    showToast('❌ OTP verification error: ' + e.message);
   }
 }
 
@@ -372,7 +395,7 @@ function verifyOtp() {
     const pendingToken = otpRow && otpRow.dataset.pendingToken;
     const pendingUserRaw = otpRow && otpRow.dataset.pendingUser;
 
-    if (!pendingToken) {
+    if (!pendingToken || !pendingUserRaw) {
       showToast('❌ Session expired. Please sign in again.');
       // Reset UI
       if (otpRow) otpRow.style.display = 'none';
@@ -393,12 +416,14 @@ function verifyOtp() {
         // Clean up pending data
         delete otpRow.dataset.pendingToken;
         delete otpRow.dataset.pendingUser;
-        saveSession(); afterLogin();
+        saveSession(); 
+        afterLogin();
       } else {
         showToast('❌ OTP verification failed: ' + (res.error || 'Invalid code'));
       }
     } catch(e) {
-      showToast('❌ OTP verification error');
+      console.error('verifyOtp error:', e);
+      showToast('❌ OTP verification error: ' + e.message);
     }
   })();
 }
