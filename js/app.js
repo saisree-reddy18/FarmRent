@@ -89,9 +89,6 @@ async function apiRequestOtp(email) {
     return { ok: false, error: e.message || 'Network error' };
   }
 }
-async function apiVerifyOtp(email, code) {
-  try { const r = await fetch(API_BASE + '/verify-otp', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ email, code }) }); return r.ok ? await r.json() : null; } catch (e) { return null; }
-}
 
 // Chats
 async function apiGetChats(threadKey) {
@@ -228,14 +225,8 @@ function authTab(t) {
   $('authToggleText').textContent = isSignin ? "Don't have an account?" : "Already have an account?";
   $('authToggleLink').textContent = isSignin ? 'Sign Up' : 'Sign In';
   $('authToggleLink').onclick     = () => authTab(isSignin ? 'signup' : 'signin');
-  // hide otp rows when switching and reset signin step
-  if (isSignin) {
-    const row = $('siOtpRow');
-    if (row) { row.style.display = 'none'; delete row.dataset.pendingToken; delete row.dataset.pendingUser; }
-    const step1 = $('siStep1'); if (step1) step1.style.display = 'block';
-  } else {
-    if ($('suOtpRow')) $('suOtpRow').style.display = 'none';
-  }
+  // sign-in no longer uses OTP; nothing extra to hide
+  if (!isSignin && $('suOtpRow')) $('suOtpRow').style.display = 'none';
 }
 
 function pickRole(r) {
@@ -267,40 +258,6 @@ function doLogin() {
     showToast('✅ Welcome back, ' + res.user.name + '!');
   })();
 }
-function doSigninWithOtp() {
-  const email = $('siEmail').value.trim().toLowerCase();
-  const pass  = $('siPass').value.trim();
-  if (!email) { showToast('❌ Please enter your email'); $('siEmail').focus(); return; }
-  if (!pass)  { showToast('❌ Please enter your password'); $('siPass').focus(); return; }
-
-  (async () => {
-    // Step 1: Validate credentials first
-    const res = await apiLogin({ email, pass });
-    if (!res || !res.token) {
-      showToast('❌ Invalid email or password');
-      return;
-    }
-    // Credentials valid — now send OTP before granting access
-    const outcome = await apiRequestOtp(email);
-    if (outcome.ok) {
-      const data = outcome.data;
-      showToast('✅ OTP sent — check your email');
-      const row = $('siOtpRow'); if (row) row.style.display = 'block';
-      const step1 = $('siStep1'); if (step1) step1.style.display = 'none';
-      if (data.code) {
-        $('siOtpCode').value = data.code;
-        showToast('✅ DEV mode — OTP auto-filled: ' + data.code);
-        console.log('DEV OTP:', data.code);
-      }
-      // Store pending session data; actual login happens after OTP verify
-      $('siOtpRow').dataset.pendingToken = res.token;
-      $('siOtpRow').dataset.pendingUser  = JSON.stringify(res.user);
-    } else {
-      showToast('❌ Could not send OTP: ' + (outcome.error || 'unknown'));
-    }
-  })();
-}
-
 let signupOtpVerified = false;
 
 function doSignup() {
@@ -352,14 +309,16 @@ async function verifySignupOtp() {
 }
 
 function requestOtp() {
-  // determine whether we're signing in or signing up
+  // only used during signup now
   const isSignup = $('tabSignup').classList.contains('active');
-  const email = (isSignup ? $('suEmail') : $('siEmail')).value.trim().toLowerCase();
-  console.log('requestOtp called, isSignup=', isSignup, 'email=', email);
+  if (!isSignup) {
+    showToast('❌ OTP not needed for sign-in');
+    return;
+  }
+  const email = $('suEmail').value.trim().toLowerCase();
   if (!email) {
     showToast('❌ Enter your email first');
-    // focus the appropriate field so user can type
-    const fld = isSignup ? $('suEmail') : $('siEmail');
+    const fld = $('suEmail');
     if (fld) fld.focus();
     return;
   }
@@ -368,62 +327,14 @@ function requestOtp() {
     if (outcome.ok) {
       const res = outcome.data;
       showToast('✅ OTP requested — check email (or console in dev)');
-      if (isSignup) {
-        const row = $('suOtpRow'); if (row) row.style.display = 'block';
-        if (res.code) { $('suOtpCode').value = res.code; }
-      } else {
-        const row = $('siOtpRow'); if (row) row.style.display = 'block';
-        if (res.code) { $('siOtpCode').value = res.code; }
-      }
+      const row = $('suOtpRow'); if (row) row.style.display = 'block';
+      if (res.code) { $('suOtpCode').value = res.code; }
       if (res.code) {
         showToast(`✅ OTP auto-filled for development: ${res.code}`);
         console.log('DEV OTP:', res.code);
       }
     } else {
       showToast('❌ Failed to request OTP: ' + (outcome.error || 'unknown'));
-    }
-  })();
-}
-
-function verifyOtp() {
-  const email = $('siEmail').value.trim().toLowerCase();
-  const code  = $('siOtpCode').value.trim();
-  if (!email || !code) { showToast('❌ Enter email and OTP'); return; }
-  (async () => {
-    // Use verify-otp-only to check the code, then use the pending session token
-    const otpRow = $('siOtpRow');
-    const pendingToken = otpRow && otpRow.dataset.pendingToken;
-    const pendingUserRaw = otpRow && otpRow.dataset.pendingUser;
-
-    if (!pendingToken || !pendingUserRaw) {
-      showToast('❌ Session expired. Please sign in again.');
-      // Reset UI
-      if (otpRow) otpRow.style.display = 'none';
-      const step1 = $('siStep1'); if (step1) step1.style.display = 'block';
-      return;
-    }
-
-    try {
-      const r = await fetch(API_BASE + '/verify-otp-only', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, code })
-      });
-      const res = await r.json();
-      if (r.ok && res.ok) {
-        const user = JSON.parse(pendingUserRaw);
-        session = { email: user.email, name: user.name, role: user.role, contact: user.contact || '', token: pendingToken };
-        // Clean up pending data
-        delete otpRow.dataset.pendingToken;
-        delete otpRow.dataset.pendingUser;
-        saveSession(); 
-        afterLogin();
-      } else {
-        showToast('❌ OTP verification failed: ' + (res.error || 'Invalid code'));
-      }
-    } catch(e) {
-      console.error('verifyOtp error:', e);
-      showToast('❌ OTP verification error: ' + e.message);
     }
   })();
 }
