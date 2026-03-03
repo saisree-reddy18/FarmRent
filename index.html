@@ -58,10 +58,9 @@
       <input id="siEmail" class="form-input" type="email" placeholder="you@example.com"/>
       <label class="form-label">Password</label>
       <input id="siPass" class="form-input" type="password" placeholder="Password"/>
-
       <div style="margin-top:12px;">
-        <button class="btn-primary" onclick="doLogin()" style="width:100%">Sign In →</button>
-        <div style="margin-top:8px;text-align:center;">
+        <button class="btn-primary" onclick="doSignin()" style="width:100%">Sign In →</button>
+        <div style="margin-top:8px;">
           <button class="btn-action" onclick="authTab('signup')" style="width:100%">Sign Up</button>
         </div>
       </div>
@@ -84,7 +83,7 @@
         <label class="form-label">Contact (phone / alternate email)</label>
         <input id="suContact" class="form-input" placeholder="Optional contact info"/>
       </div>
-      <button class="btn-primary" onclick="doSignup()">Create Account →</button>
+      <button class="btn-primary" style="margin-top:14px;width:100%" onclick="doSignup()">Create Account →</button>
     </div>
 
     <p class="auth-toggle">
