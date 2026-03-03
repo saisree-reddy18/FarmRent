@@ -26,7 +26,9 @@ function uid()  { return 'id' + Math.random().toString(36).slice(2, 9); }
 function esc(s) { return (s || '').toString().replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[c]); }
 
 // API sync settings
-const API_BASE = 'https://farmrent-1.onrender.com/api';
+// during development you can override the base URL by setting a global variable
+// (e.g. <script>window.API_BASE='http://localhost:4000/api'</script> before loading app.js)
+const API_BASE = window.API_BASE || 'https://farmrent-1.onrender.com/api';
 
 async function apiAvailable() {
   try {
@@ -68,7 +70,14 @@ async function apiSignup(payload) {
   try { const r = await fetch(API_BASE + '/signup', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) }); return r.ok ? await r.json() : null; } catch (e) { return null; }
 }
 async function apiLogin(payload) {
-  try { const r = await fetch(API_BASE + '/login', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) }); return r.ok ? await r.json() : null; } catch (e) { return null; }
+  try {
+    const r = await fetch(API_BASE + '/login', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+    // if server returns non-2xx the body may contain a message but the caller can decide
+    return r.ok ? await r.json() : { error: 'server', status: r.status };
+  } catch (e) {
+    console.error('apiLogin network error', e);
+    return null;
+  }
 }
 
 // OTP APIs
@@ -247,13 +256,19 @@ function doLogin() {
   if (!pass)  { showToast('❌ Please enter your password'); $('siPass').focus(); return; }
   (async () => {
     const res = await apiLogin({ email, pass });
-    if (!res || !res.token) {
+    if (!res) {
+      // null indicates a network failure or unreachable backend
+      showToast('⚠️ Unable to contact server. Check your network / backend is running.');
+      return;
+    }
+    if (!res.token) {
+      // server responded but credentials were rejected
       showToast('❌ Invalid email or password');
       return;
     }
     session = { email: res.user.email, name: res.user.name, role: res.user.role, contact: res.user.contact || '', token: res.token };
     persist();
-goTo('browse');
+    goTo('browse');
     renderAll();
     showToast('✅ Welcome back, ' + res.user.name + '!');
   })();
