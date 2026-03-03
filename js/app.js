@@ -253,7 +253,7 @@ function doLogin() {
     }
     session = { email: res.user.email, name: res.user.name, role: res.user.role, contact: res.user.contact || '', token: res.token };
     persist();
-    closeAuth();
+goTo('browse');
     renderAll();
     showToast('✅ Welcome back, ' + res.user.name + '!');
   })();
