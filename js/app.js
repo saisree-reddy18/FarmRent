@@ -258,18 +258,15 @@ function doLogin() {
     showToast('✅ Welcome back, ' + res.user.name + '!');
   })();
 }
-let signupOtpVerified = false;
 
 function doSignup() {
   const name    = $('suName').value.trim();
   const email   = $('suEmail').value.trim().toLowerCase();
   const pass    = $('suPass').value.trim();
   const contact = $('suContact') ? $('suContact').value.trim() : '';
-  const otp     = $('suOtpCode') ? $('suOtpCode').value.trim() : '';
   if (!name || !email || !pass) { showToast('❌ Please fill all required fields'); return; }
-  if (!signupOtpVerified) { showToast('❌ Please verify OTP before creating account'); return; }
   (async () => {
-    const res = await apiSignup({ name, email, pass, role: selectedRole, contact, otp });
+    const res = await apiSignup({ name, email, pass, role: selectedRole, contact, otp: 'skipped' });
     if (res && res.token) {
       session = { email: res.user.email, name: res.user.name, role: res.user.role, contact: res.user.contact || '', token: res.token };
       saveSession();

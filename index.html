@@ -65,6 +65,7 @@
           <button class="btn-action" onclick="authTab('signup')" style="width:100%">Sign Up</button>
         </div>
       </div>
+    </div>
 
     <!-- SIGNUP -->
     <div id="paneSignup" style="display:none">
@@ -74,18 +75,6 @@
       <input id="suEmail" class="form-input" type="email" placeholder="you@example.com"/>
       <label class="form-label">Password</label>
       <input id="suPass" class="form-input" type="password" placeholder="Create a password"/>
-      <div style="margin-top:10px; text-align:center;">
-        <span style="color:var(--muted);">— verify your email —</span>
-      </div>
-      <div style="display:flex;gap:8px;margin-top:8px;">
-        <button class="btn-action outline" onclick="requestOtp()">Send OTP</button>
-      </div>
-      <div id="suOtpRow" style="display:none;margin-top:12px;">
-        <label class="form-label">Enter OTP</label>
-        <input id="suOtpCode" class="form-input" placeholder="123456" />
-        <button class="btn-small" style="margin-top:6px" onclick="verifySignupOtp()">Verify OTP</button>
-        <span id="suOtpStatus" style="margin-left:8px;color:green;display:none">✔️ Verified</span>
-      </div>
       <label class="form-label" style="margin-top:14px">I am a:</label>
       <div class="role-select">
         <div id="roleTenant" class="role-btn active" onclick="pickRole('tenant')">🌾 Farmer (Tenant)</div>
