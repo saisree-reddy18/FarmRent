@@ -122,11 +122,8 @@ app.get('/api/health', (req, res) => res.json({ ok: true }));
 // Signup
 app.post('/api/signup', async (req, res) => {
   try {
-    const { name, email, pass, role, contact, otp } = req.body || {};
-    if (!name || !email || !pass || !otp) return res.status(400).json({ error: 'Invalid payload' });
-    const otpRec = await Otp.findOne({ email: email.toLowerCase() });
-    if (!otpRec || otpRec.code !== otp.toString() || Date.now() > otpRec.expiresAt)
-      return res.status(400).json({ error: 'Invalid or expired OTP' });
+    const { name, email, pass, role, contact } = req.body || {};
+if (!name || !email || !pass) return res.status(400).json({ error: 'Please fill all fields' });
     const exists = await User.findOne({ email: email.toLowerCase() });
     if (exists) return res.status(409).json({ error: 'Email already registered' });
     const hashed = bcrypt.hashSync(pass, 10);
