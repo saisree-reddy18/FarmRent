@@ -266,20 +266,13 @@ function doSignup() {
   const contact = $('suContact') ? $('suContact').value.trim() : '';
   if (!name || !email || !pass) { showToast('❌ Please fill all required fields'); return; }
   (async () => {
-    const res = await apiSignup({ name, email, pass, role: selectedRole, contact, otp: 'skipped' });
-    if (res && res.token) {
+const res = await apiSignup({ name, email, pass, role: selectedRole, contact });    if (res && res.token) {
       session = { email: res.user.email, name: res.user.name, role: res.user.role, contact: res.user.contact || '', token: res.token };
       saveSession();
       afterLogin();
       return;
     }
-    // fallback to local signup (ignores OTP)
-    if (db.users.some(u => u.email === email)) { showToast('❌ Email already registered. Please sign in.'); authTab('signin'); return; }
-    const role = email === 'admin@farmrent.com' ? 'admin' : selectedRole;
-    const user = { name, email, pass, role, contact };
-    db.users.push(user); persist();
-    session = { email, name, role, contact }; saveSession();
-    afterLogin();
+    showToast('❌ Signup failed. Please try again.');
   })();
 }
 
